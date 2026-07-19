@@ -12,6 +12,7 @@ export default function Sidebar({ user, logout }) {
     { path: '/dashboard/teacher/results', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>, label: 'Results' },
   ] : [
     { path: '/dashboard/student', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>, label: 'Dashboard' },
+    { path: '/dashboard/student/results', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>, label: 'My Results' },
   ]
 
   return (

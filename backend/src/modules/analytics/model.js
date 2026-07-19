@@ -18,7 +18,7 @@ async function getStudentExamResult(examId, studentId) {
   const answers = submission.answers || {};
 
   let totalPossible = 0;
-  let earnedScore = 0;
+  let autoGradedScore = 0;
   const breakdown = [];
 
   for (const q of questions) {
@@ -32,7 +32,7 @@ async function getStudentExamResult(examId, studentId) {
       const given = studentAnswer ? studentAnswer.trim().toLowerCase() : '';
       isCorrect = correct === given;
       pointsEarned = isCorrect ? q.points : 0;
-      earnedScore += pointsEarned;
+      autoGradedScore += pointsEarned;
     }
 
     breakdown.push({
@@ -47,6 +47,12 @@ async function getStudentExamResult(examId, studentId) {
     });
   }
 
+  // Use the DB score if it's been set (covers manual grading of subjective questions).
+  // If the DB score equals our auto-computed score, it means no manual grading has occurred.
+  // If the DB score is higher than auto-graded, a teacher has added subjective points.
+  const dbScore = submission.score !== null && submission.score !== undefined ? submission.score : null;
+  const finalScore = dbScore !== null ? dbScore : autoGradedScore;
+
   // Time taken (from started_at to submitted_at)
   let timeTakenSeconds = null;
   if (submission.started_at && submission.submitted_at) {
@@ -58,15 +64,20 @@ async function getStudentExamResult(examId, studentId) {
   return {
     student_id: studentId,
     exam_id: examId,
-    score: earnedScore,
+    score: finalScore,
+    auto_graded_score: autoGradedScore,
     total_possible: totalPossible,
-    percentage: totalPossible > 0 ? Math.round((earnedScore / totalPossible) * 100) : 0,
+    percentage: totalPossible > 0 ? Math.round((finalScore / totalPossible) * 100) : 0,
     time_taken_seconds: timeTakenSeconds,
     submitted_at: submission.submitted_at,
     started_at: submission.started_at,
+    ai_summary: typeof submission.ai_summary === 'string' && submission.ai_summary.startsWith('{') 
+      ? JSON.parse(submission.ai_summary) 
+      : submission.ai_summary || null,
     breakdown,
   };
 }
+
 
 // ─── Per-Exam Analytics ─────────────────────────────────────────────────────
 // Returns: score distribution, average time, flag summary, all submissions
@@ -187,8 +198,18 @@ async function getStudentIntegrity(examId, studentId) {
   };
 }
 
+// ─── Update Student Score (Manual Grading) ──────────────────────────────────
+async function updateStudentScore(examId, studentId, newScore) {
+  const result = await db.query(
+    'UPDATE submissions SET score = $1 WHERE exam_id = $2 AND student_id = $3 RETURNING *',
+    [newScore, examId, studentId]
+  );
+  return result.rows[0];
+}
+
 module.exports = {
   getStudentExamResult,
   getExamAnalytics,
   getStudentIntegrity,
+  updateStudentScore,
 };

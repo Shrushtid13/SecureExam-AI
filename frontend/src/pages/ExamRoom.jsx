@@ -17,22 +17,28 @@ function PreflightGate({ exam, onReady }) {
 
   // 1. Check extension presence via externally_connectable PING
   useEffect(() => {
-    // If extension ID is not set, we can't connect
+    // Helper to bypass extension step
+    const bypassExtension = (msg) => {
+      console.warn(msg)
+      setExtOk(false) // Not installed
+      setStep('camera') // Move forward anyway
+    }
+
     if (!EXTENSION_ID || EXTENSION_ID === 'REPLACE_WITH_EXTENSION_ID') {
-      setError('EXTENSION_ID is not configured in ExamRoom.jsx. Please paste your Chrome Extension ID at line 8.')
+      bypassExtension('VITE_EXTENSION_ID not configured. Bypassing extension check.')
       return
     }
 
     const timeout = setTimeout(() => {
-      setError('SecureExam Chrome extension not detected or did not respond. Please install it and reload.')
-    }, 3000)
+      bypassExtension('Extension timeout. Bypassing check.')
+    }, 2000)
 
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       try {
         chrome.runtime.sendMessage(EXTENSION_ID, { type: 'PING' }, (resp) => {
           if (chrome.runtime.lastError) {
             clearTimeout(timeout)
-            setError('Extension not found (make sure EXTENSION_ID matches your installed unpacked extension).')
+            bypassExtension('Extension not found. Bypassing check.')
             return
           }
           if (resp?.type === 'PONG') {
@@ -44,11 +50,11 @@ function PreflightGate({ exam, onReady }) {
         })
       } catch {
         clearTimeout(timeout)
-        setError('Error connecting to extension. Is it installed?')
+        bypassExtension('Error connecting to extension. Bypassing check.')
       }
     } else {
       clearTimeout(timeout)
-      setError('chrome.runtime not available (must use Chrome).')
+      bypassExtension('chrome.runtime not available. Bypassing check.')
     }
 
     return () => clearTimeout(timeout)
@@ -282,7 +288,7 @@ function QuestionView({ question, answer, onChange }) {
 const GRACE_PERIOD_MS = 3000 // 3s before a nudge becomes a flag
 const NUDGE_DELAY_MS = 1000  // 1s before showing the nudge
 
-function ProctoringEngine({ examId, stream, onNudge }) {
+function ProctoringEngine({ examId, stream, onNudge, isSubmitting }) {
   const canvasRef = useRef(document.createElement('canvas'))
   const videoRef = useRef(document.createElement('video'))
   const faceLandmarkerRef = useRef(null)
@@ -348,7 +354,7 @@ function ProctoringEngine({ examId, stream, onNudge }) {
         const landmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
           baseOptions: {
             modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-            delegate: 'GPU'
+            delegate: 'CPU'
           },
           outputFaceBlendshapes: true,
           outputFacialTransformationMatrixes: true,
@@ -424,7 +430,12 @@ function ProctoringEngine({ examId, stream, onNudge }) {
 
             // After 3s, log formal violation
             if (elapsed > GRACE_PERIOD_MS) {
-              logViolation(issue.type, issue.detail)
+              let flagType = issue.type
+              if (flagType === 'looking_away') flagType = 'look_away'
+              if (flagType === 'no_face') flagType = 'no_face_detected'
+              if (flagType === 'multiple_faces') flagType = 'multiple_faces_detected'
+
+              logViolation(flagType, issue.detail)
               // Reset timer so it doesn't spam
               issueStartRef.current = Date.now()
               nudgeShownRef.current = false
@@ -454,28 +465,31 @@ function ProctoringEngine({ examId, stream, onNudge }) {
   // Monitor visibility (tab switching) — also kept as a client-side fallback
   useEffect(() => {
     const handleVisibility = () => {
+      if (isSubmitting) return
       if (document.hidden) {
         logViolation('tab_switched', 'User switched to another tab or minimized the browser.')
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [logViolation])
+  }, [logViolation, isSubmitting])
 
   // Monitor extension messages (clipboard blocked by extension)
   useEffect(() => {
     const handleMessage = (e) => {
+      if (isSubmitting) return
       if (e.data && e.data.type === 'SECURE_EXAM_VIOLATION') {
         logViolation('extension_flag', `Violation caught by extension: ${e.data.violation}`)
       }
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [logViolation])
+  }, [logViolation, isSubmitting])
 
   // Monitor fullscreen
   useEffect(() => {
     const handleFullscreen = () => {
+      if (isSubmitting) return
       if (!document.fullscreenElement) {
         logViolation('fullscreen_exit', 'User exited fullscreen mode.')
         onNudge('You exited fullscreen mode. This has been logged as a violation.')
@@ -483,7 +497,7 @@ function ProctoringEngine({ examId, stream, onNudge }) {
     }
     document.addEventListener('fullscreenchange', handleFullscreen)
     return () => document.removeEventListener('fullscreenchange', handleFullscreen)
-  }, [logViolation, onNudge])
+  }, [logViolation, onNudge, isSubmitting])
 
   // AI Microservice Snapshot & Audio Interval (Every 10s)
   useEffect(() => {
@@ -548,11 +562,13 @@ function ProctoringEngine({ examId, stream, onNudge }) {
     }
 
     // Run first check immediately, then every 10s
-    processAI()
-    intervalId = setInterval(processAI, 10000)
+    if (!isSubmitting) {
+      processAI()
+      intervalId = setInterval(processAI, 10000)
+    }
 
     return () => clearInterval(intervalId)
-  }, [examId, stream])
+  }, [examId, stream, isSubmitting])
 
   return null // Headless component
 }
@@ -650,21 +666,40 @@ export default function ExamRoom() {
     if (!confirm('Are you sure you want to submit? You cannot change your answers after submission.')) return
     setSubmitting(true)
     setSubmitError('')
-    try {
-      await api.post(`/submissions/${examId}/submit`, { answers: answersRef.current })
-      localStorage.removeItem(`exam_answers_${examId}`)
-      // Exit fullscreen gracefully
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
-      // Tell extension to stop monitoring
-      if (typeof chrome !== 'undefined' && chrome.runtime) {
-        try { chrome.runtime.sendMessage(EXTENSION_ID, { type: 'END_EXAM' }) } catch {}
+    
+    let retries = 3;
+    let success = false;
+    let lastErr = null;
+
+    while (retries > 0 && !success) {
+      try {
+        await api.post(`/submissions/${examId}/submit`, { answers: answersRef.current })
+        success = true;
+      } catch (err) {
+        lastErr = err;
+        retries--;
+        if (retries > 0) {
+          await new Promise(r => setTimeout(r, 2000)); // wait 2 seconds before retry
+        }
       }
-      setPhase('submitted')
-    } catch (err) {
-      setSubmitError(err.response?.data?.error || 'Submission failed. Try again.')
-    } finally {
-      setSubmitting(false)
     }
+
+    if (!success) {
+      setSubmitError(lastErr?.response?.data?.error || 'Submission failed after retries. Check connection and try again.')
+      setSubmitting(false)
+      return
+    }
+
+    // Success path
+    localStorage.removeItem(`exam_answers_${examId}`)
+    // Exit fullscreen gracefully
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    // Tell extension to stop monitoring
+    if (typeof chrome !== 'undefined' && chrome.runtime) {
+      try { chrome.runtime.sendMessage(EXTENSION_ID, { type: 'END_EXAM' }) } catch {}
+    }
+    setPhase('submitted')
+    setSubmitting(false)
   }
 
   // ── Render states ───────────────────────────────────────────────────────
@@ -750,7 +785,7 @@ export default function ExamRoom() {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', overflow: 'hidden' }}>
       
       {/* Proctoring Engine */}
-      <ProctoringEngine examId={examId} stream={mediaStream} onNudge={msg => setNudge({message: msg})} />
+      <ProctoringEngine examId={examId} stream={mediaStream} onNudge={msg => setNudge({message: msg})} isSubmitting={submitting || phase === 'submitted'} />
 
       {/* Fullscreen nudge overlay */}
       {nudge && (

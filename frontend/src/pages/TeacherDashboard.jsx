@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-// Link import removed - not currently used
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import api from '../api'
@@ -22,7 +22,7 @@ function StatCard({ label, value, icon, bg, color, sub }) {
 }
 
 /* ── Exam Row ─────────────────────────────────────────────────── */
-function ExamRow({ exam, onDelete, onEnroll, onProctoring }) {
+function ExamRow({ exam, onDelete, onEnroll, onProctoring, onQuestions }) {
   const now = new Date()
   const isLive = now >= new Date(exam.start_time) && now <= new Date(exam.end_time)
   const isUpcoming = now < new Date(exam.start_time)
@@ -65,6 +65,13 @@ function ExamRow({ exam, onDelete, onEnroll, onProctoring }) {
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+        <button onClick={() => onQuestions(exam)} style={{...actionBtn, borderColor: 'rgba(34,197,94,.3)', color: 'var(--success)'}}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--success-soft)'; e.currentTarget.style.color = 'var(--success)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--success)' }}
+          title="Add or edit questions"
+        >
+          Questions
+        </button>
         <button style={{...actionBtn, borderColor: 'rgba(245,158,11,.3)', color: 'var(--warning)'}} title="View proctoring report"
           onMouseEnter={e => { e.currentTarget.style.background = 'var(--warning-soft)'; e.currentTarget.style.color = 'var(--warning)' }}
           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--warning)' }}
@@ -96,6 +103,7 @@ function ExamRow({ exam, onDelete, onEnroll, onProctoring }) {
 /* ── Main Component ───────────────────────────────────────────── */
 export default function TeacherDashboard() {
   const { user, logout } = useAuth()
+  const navigate = useNavigate()
   const [exams, setExams] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -139,6 +147,15 @@ export default function TeacherDashboard() {
       console.log('Joined monitoring room for exam', proctoringExam.id)
     })
 
+    socket.on('disconnect', (reason) => {
+      console.warn('Socket disconnected:', reason)
+    })
+
+    // Socket.io auto-reconnects, 'connect' will fire again to re-join the room.
+    socket.io.on('reconnect', (attempt) => {
+      console.log('Socket reconnected after', attempt, 'attempts')
+    })
+
     socket.on('new_proctoring_flag', (flag) => {
       setProctoringFlags(prev => [flag, ...prev])
     })
@@ -158,7 +175,12 @@ export default function TeacherDashboard() {
   async function handleCreate(e) {
     e.preventDefault(); setFormError(''); setSubmitting(true)
     try {
-      await api.post('/exams', form)
+      const payload = {
+        ...form,
+        startTime: new Date(form.startTime).toISOString(),
+        endTime: new Date(form.endTime).toISOString()
+      }
+      await api.post('/exams', payload)
       setShowForm(false)
       setForm({ title: '', description: '', durationMinutes: 60, startTime: '', endTime: '' })
       load()
@@ -302,7 +324,7 @@ export default function TeacherDashboard() {
                 <p style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.875rem' }}>Click "New Exam" to schedule your first examination.</p>
               </div>
             ) : (
-              exams.map(exam => <ExamRow key={exam.id} exam={exam} onDelete={handleDelete} onEnroll={setEnrollExam} onProctoring={async (ex) => {
+              exams.map(exam => <ExamRow key={exam.id} exam={exam} onDelete={handleDelete} onEnroll={setEnrollExam} onQuestions={(ex) => navigate(`/dashboard/teacher/exams/${ex.id}/build`)} onProctoring={async (ex) => {
                 setProctoringExam(ex); setProctoringLoading(true); setProctoringFlags([])
                 try {
                   const { data } = await api.get(`/exams/${ex.id}/proctoring`)

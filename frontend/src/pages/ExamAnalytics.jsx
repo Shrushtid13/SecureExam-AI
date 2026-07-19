@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../api'
 import Sidebar from '../components/Sidebar'
@@ -127,6 +127,33 @@ function StudentAnalyticsModal({ examId, studentId, studentName, onClose }) {
                 </div>
               </div>
 
+              {resultData.ai_summary && typeof resultData.ai_summary === 'object' ? (
+                <div style={{ padding: '1.5rem', background: resultData.ai_summary.overall_risk === 'high' ? 'var(--danger-soft)' : 'var(--info-soft)', borderRadius: 12, border: `1px solid ${resultData.ai_summary.overall_risk === 'high' ? 'rgba(239,68,68,0.2)' : 'rgba(59,130,246,0.2)'}`, marginBottom: '2rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: resultData.ai_summary.overall_risk === 'high' ? 'var(--danger)' : 'var(--info)', textTransform: 'uppercase' }}>AI Proctoring Report</h4>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.25rem 0.75rem', borderRadius: 999, background: 'var(--bg-main)', color: resultData.ai_summary.overall_risk === 'high' ? 'var(--danger)' : 'var(--text-muted)', textTransform: 'uppercase' }}>Risk: {resultData.ai_summary.overall_risk}</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-h)', fontWeight: 600, lineHeight: 1.6, marginBottom: '1rem' }}>{resultData.ai_summary.explanation}</p>
+                  
+                  {resultData.ai_summary.incidents && resultData.ai_summary.incidents.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <h5 style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Key Incidents ({resultData.ai_summary.incidents.length})</h5>
+                      {resultData.ai_summary.incidents.map((inc, i) => (
+                        <div key={i} style={{ padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 8, fontSize: '0.85rem', color: 'var(--text-h)', fontWeight: 500 }}>
+                           <span style={{ fontWeight: 700, color: 'var(--primary)', marginRight: '0.5rem' }}>Incident {i+1}:</span>
+                           {inc.description || inc.details || JSON.stringify(inc)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : resultData.ai_summary && (
+                <div style={{ padding: '1.5rem', background: 'var(--info-soft)', borderRadius: 12, border: '1px solid rgba(59,130,246,0.2)', marginBottom: '2rem' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: 'var(--info)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>AI Proctoring Summary</h4>
+                  <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-h)', fontWeight: 500, lineHeight: 1.6 }}>{resultData.ai_summary}</p>
+                </div>
+              )}
+
               <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-h)', marginBottom: '1rem' }}>Question Breakdown</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {resultData.breakdown.map((q, i) => (
@@ -183,8 +210,8 @@ function StudentAnalyticsModal({ examId, studentId, studentName, onClose }) {
                             <img src={`http://localhost:9000/secureexam-snapshots/${flag.snapshot_key}`} alt="Evidence" style={{ height: 120, display: 'block', opacity: 0.9 }} onError={(e) => e.target.style.display = 'none'} />
                           </div>
                         )}
-                        <div style={{ marginTop: '0.75rem', fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                          Source: {flag.source}
+                        <div style={{ marginTop: '0.75rem', fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', gap: '1rem' }}>
+                          <span>Source: {flag.source}</span>
                         </div>
                       </div>
                     </div>
@@ -202,16 +229,23 @@ function StudentAnalyticsModal({ examId, studentId, studentName, onClose }) {
 // ─── Main Exam Analytics Page ──────────────────────────────────────────────────
 export default function ExamAnalytics() {
   const { examId } = useParams()
+  const navigate = useNavigate()
   const { user, logout } = useAuth()
   const [data, setData] = useState(null)
+  const [severities, setSeverities] = useState([])
   const [loading, setLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null) // { id, name }
 
   useEffect(() => {
     async function fetchAnalytics() {
       try {
-        const res = await api.get(`/analytics/exams/${examId}`)
+        const [res, sev] = await Promise.all([
+          api.get(`/analytics/exams/${examId}`),
+          api.get(`/exams/${examId}/proctoring/severities`)
+        ])
         setData(res.data)
+        setSeverities(sev.data.severities || [])
       } catch (err) {
         console.error('Failed to load exam analytics', err)
       } finally {
@@ -221,23 +255,50 @@ export default function ExamAnalytics() {
     fetchAnalytics()
   }, [examId])
 
+  const handleGenerateSummary = async () => {
+    setGenerating(true)
+    try {
+      await api.post(`/exams/${examId}/proctoring/generate-summary`)
+      alert('AI summaries generated successfully! Refreshing data...')
+      window.location.reload()
+    } catch (err) {
+      alert('Failed to generate summary.')
+      console.error(err)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-main)' }}>
       <Sidebar user={user} logout={logout} />
       
-      <main style={{ flex: 1, overflowY: 'auto', padding: '2rem 3rem' }}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div style={{ marginLeft: 260, flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <header className="topbar" style={{ justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
               <Link to="/dashboard/teacher/results" style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
               </Link>
-              <h1 style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-h)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>Analytics Report</h1>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-h)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}>Analytics Report</h2>
             </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500, marginLeft: '2rem' }}>Exam ID: {examId}</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 500, marginLeft: '2rem' }}>Exam ID: {examId}</p>
           </div>
-          <ThemeToggle />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button 
+              onClick={handleGenerateSummary} 
+              disabled={generating}
+              className="btn btn-secondary" 
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+              {generating ? 'Generating...' : 'Generate AI Summary'}
+            </button>
+            <ThemeToggle />
+          </div>
         </header>
+
+        <main style={{ flex: 1, overflowY: 'auto', padding: '2rem 3rem' }} className="fade-in">
 
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}><div className="spinner"></div></div>
@@ -246,6 +307,32 @@ export default function ExamAnalytics() {
         ) : (
           <div className="fade-in space-y-6">
             
+            {data.exam_integrity_summary && (
+              <div style={{ padding: '1.5rem', background: 'var(--info-soft)', borderRadius: 12, border: '1px solid rgba(59,130,246,0.2)', marginBottom: '2rem' }}>
+                <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: 'var(--info)', textTransform: 'uppercase', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  AI Integrity Overview
+                </h4>
+                <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-h)', fontWeight: 500, lineHeight: 1.6 }}>{data.exam_integrity_summary}</p>
+                
+                {severities.length > 0 && (
+                  <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {severities.map(s => (
+                      <div key={s.student_id} style={{ 
+                        padding: '0.4rem 0.75rem', 
+                        borderRadius: 6, 
+                        background: s.total_severity >= 20 ? 'var(--danger-soft)' : s.total_severity > 0 ? 'var(--warning-soft)' : 'var(--bg-main)',
+                        color: s.total_severity >= 20 ? 'var(--danger)' : s.total_severity > 0 ? 'var(--warning)' : 'var(--text-muted)',
+                        fontSize: '0.75rem', fontWeight: 700, border: '1px solid rgba(0,0,0,0.05)'
+                      }}>
+                        {s.student_name} (Risk Score: {s.total_severity})
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Top Stat Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
               <StatCard 
@@ -343,9 +430,14 @@ export default function ExamAnalytics() {
                               {new Date(sub.submitted_at).toLocaleString()}
                             </td>
                             <td style={{ padding: '1rem 2rem' }}>
-                              <button onClick={() => setSelectedStudent({ id: sub.student_id, name: sub.student_name })} className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}>
-                                Details
-                              </button>
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button onClick={() => setSelectedStudent({ id: sub.student_id, name: sub.student_name })} className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}>
+                                  Integrity
+                                </button>
+                                <button onClick={() => navigate(`/dashboard/teacher/results/${examId}/student/${sub.student_id}`)} className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}>
+                                  View Paper
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         )
@@ -358,6 +450,7 @@ export default function ExamAnalytics() {
           </div>
         )}
       </main>
+      </div>
 
       {selectedStudent && (
         <StudentAnalyticsModal 

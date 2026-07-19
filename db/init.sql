@@ -7,6 +7,8 @@ CREATE TABLE users (
   password_hash VARCHAR(255) NOT NULL,
   role VARCHAR(50) NOT NULL CHECK (role IN ('student', 'teacher', 'admin')),
   class_id INTEGER,
+  reset_token VARCHAR(255),
+  reset_expires TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

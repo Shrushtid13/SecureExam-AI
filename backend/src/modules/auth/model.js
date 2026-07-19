@@ -42,9 +42,36 @@ async function listAllStudents() {
   return result.rows;
 }
 
+async function setResetToken(email, token, expiresAt) {
+  const result = await db.query(
+    `UPDATE users SET reset_token = $1, reset_expires = $2 WHERE email = $3 RETURNING id, email`,
+    [token, expiresAt, email]
+  );
+  return result.rows[0];
+}
+
+async function findUserByResetToken(token) {
+  const result = await db.query(
+    `SELECT * FROM users WHERE reset_token = $1`,
+    [token]
+  );
+  return result.rows[0];
+}
+
+async function updateUserPassword(id, newHash) {
+  const result = await db.query(
+    `UPDATE users SET password_hash = $1, reset_token = NULL, reset_expires = NULL WHERE id = $2 RETURNING id`,
+    [newHash, id]
+  );
+  return result.rows[0];
+}
+
 module.exports = {
   createUser,
   findUserByEmail,
   findUserById,
   listAllStudents,
+  setResetToken,
+  findUserByResetToken,
+  updateUserPassword,
 };

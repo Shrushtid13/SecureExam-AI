@@ -81,9 +81,39 @@ async function invalidateExamCaches(examId, studentId) {
   await invalidate(`analytics:integrity:${examId}:${studentId}`);
 }
 
+// PUT /api/analytics/exams/:examId/student/:studentId/score
+async function updateStudentScore(req, res) {
+  try {
+    const examId = parseInt(req.params.examId, 10);
+    const studentId = parseInt(req.params.studentId, 10);
+    if (isNaN(examId) || isNaN(studentId)) {
+      return res.status(400).json({ error: 'Invalid exam or student ID' });
+    }
+
+    const { score } = req.body;
+    if (score === undefined || isNaN(parseInt(score, 10))) {
+      return res.status(400).json({ error: 'Score is required' });
+    }
+
+    const updated = await analyticsModel.updateStudentScore(examId, studentId, parseInt(score, 10));
+    if (!updated) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+
+    // Invalidate caches
+    await invalidateExamCaches(examId, studentId);
+
+    res.json({ message: 'Score updated successfully', score: updated.score });
+  } catch (err) {
+    console.error('updateStudentScore error:', err);
+    res.status(500).json({ error: 'Failed to update score' });
+  }
+}
+
 module.exports = {
   getStudentResult,
   getExamAnalytics,
   getStudentIntegrity,
+  updateStudentScore,
   invalidateExamCaches,
 };

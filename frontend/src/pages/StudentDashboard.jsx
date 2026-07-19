@@ -31,10 +31,14 @@ function ExamCard({ exam }) {
   const end = new Date(exam.end_time)
   const isLive = now >= start && now <= end
   const isUpcoming = now < start
+  const isEnded = now > end
 
   return (
     <div className="card" style={{ padding: '1.5rem', cursor: isLive ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: '1rem' }}
-      onClick={() => isLive && navigate(`/exam/${exam.id}`)}>
+      onClick={() => {
+        if (isLive) navigate(`/exam/${exam.id}`)
+        else if (isEnded) navigate(`/exam/${exam.id}/result`)
+      }}>
 
       {/* Top row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -74,6 +78,12 @@ function ExamCard({ exam }) {
           <button className="btn btn-primary" style={{ padding: '0.45rem 1rem', fontSize: '0.78rem' }}
             onClick={e => { e.stopPropagation(); navigate(`/exam/${exam.id}`) }}>
             Enter →
+          </button>
+        )}
+        {isEnded && (
+          <button className="btn btn-secondary" style={{ padding: '0.45rem 1rem', fontSize: '0.78rem' }}
+            onClick={e => { e.stopPropagation(); navigate(`/exam/${exam.id}/result`) }}>
+            View Result
           </button>
         )}
       </div>
@@ -167,8 +177,7 @@ export default function StudentDashboard() {
           {/* Section header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
             <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-h)', letterSpacing: '-0.01em', fontFamily: 'var(--font-heading)' }}>My Exams</h3>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500, marginTop: '0.15rem' }}>{exams.length} examination{exams.length !== 1 ? 's' : ''} assigned</p>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-h)', letterSpacing: '-0.01em', fontFamily: 'var(--font-heading)' }}>Active Exams</h3>
             </div>
           </div>
 
@@ -176,16 +185,30 @@ export default function StudentDashboard() {
             <div style={{ display: 'flex', justifyContent: 'center', padding: '5rem 0' }}>
               <div className="spinner"></div>
             </div>
-          ) : exams.length === 0 ? (
-            <div className="card-flat" style={{ padding: '4rem', textAlign: 'center', maxWidth: 480, margin: '0 auto' }}>
-              <div style={{ width: 80, height: 80, borderRadius: 24, background: 'var(--primary-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', fontSize: '2rem' }}>📋</div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-h)', marginBottom: '0.5rem', fontFamily: 'var(--font-heading)' }}>No Exams Assigned</h3>
-              <p style={{ color: 'var(--text-muted)', fontWeight: 500, lineHeight: 1.6, fontSize: '0.9rem' }}>You are not enrolled in any exams yet. Your teacher will assign them when they are ready.</p>
+          ) : (liveExams.length + upcomingExams.length) === 0 ? (
+            <div className="card-flat" style={{ padding: '3rem', textAlign: 'center', maxWidth: 480, margin: '0 auto 2rem' }}>
+              <div style={{ width: 60, height: 60, borderRadius: 16, background: 'var(--primary-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', fontSize: '1.5rem' }}>📋</div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-h)', marginBottom: '0.25rem', fontFamily: 'var(--font-heading)' }}>No Active Exams</h3>
+              <p style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.85rem' }}>You have no live or upcoming exams.</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
-              {exams.map(exam => <ExamCard key={exam.id} exam={exam} />)}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem', marginBottom: '3rem' }}>
+              {[...liveExams, ...upcomingExams].map(exam => <ExamCard key={exam.id} exam={exam} />)}
             </div>
+          )}
+
+          {/* Past Exams */}
+          {endedExams.length > 0 && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-h)', letterSpacing: '-0.01em', fontFamily: 'var(--font-heading)' }}>Past Exams & Results</h3>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
+                {endedExams.map(exam => <ExamCard key={exam.id} exam={exam} />)}
+              </div>
+            </>
           )}
         </main>
       </div>

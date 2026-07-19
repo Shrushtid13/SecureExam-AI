@@ -15,6 +15,8 @@ const gradingRoutes = require('./modules/grading/routes');
 const proctoringRoutes = require('./modules/proctoring/routes');
 const analyticsRoutes = require('./modules/analytics/routes');
 
+const { apiLimiter } = require('./middleware/rateLimit');
+
 const app = express();
 const server = http.createServer(app);
 
@@ -44,6 +46,9 @@ initAiWorker(io, minioClient);
 
 app.use(cors());
 app.use(express.json());
+
+// Apply global rate limiting to all API routes
+app.use('/api/', apiLimiter);
 
 // Register API modules
 app.use('/api/auth', authRoutes);

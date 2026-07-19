@@ -33,16 +33,19 @@ export default function ResultsPage() {
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-main)' }}>
       <Sidebar user={user} logout={logout} />
       
-      <main style={{ flex: 1, overflowY: 'auto', padding: '2rem 3rem' }}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3rem' }}>
+      <div style={{ marginLeft: 260, flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <header className="topbar" style={{ justifyContent: 'space-between' }}>
           <div>
-            <h1 style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-h)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', marginBottom: '0.25rem' }}>Exam Results & Analytics</h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>Select an exam to view detailed performance and integrity reports.</p>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-h)', letterSpacing: '-0.01em', fontFamily: 'var(--font-heading)' }}>Exam Results & Analytics</h2>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>Select an exam to view detailed reports.</p>
           </div>
-          <ThemeToggle />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <ThemeToggle />
+          </div>
         </header>
 
-        {loading ? (
+        <main style={{ flex: 1, overflowY: 'auto', padding: '2rem 3rem' }} className="fade-in">
+          {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
             <div className="spinner"></div>
           </div>
@@ -88,6 +91,7 @@ export default function ResultsPage() {
           </div>
         )}
       </main>
+      </div>
     </div>
   )
 }

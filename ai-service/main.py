@@ -88,14 +88,22 @@ async def check_snapshot(
             flags.append({"type": "no_face_detected", "confidence": 1.0})
         elif person_count > 1:
             flags.append({"type": "multiple_faces_detected", "confidence": 1.0})
-        # Evaluate audio anomaly
+        # Evaluate audio anomaly (sustained loud segments)
         if audio is not None:
             try:
                 audio_bytes = await audio.read()
                 audio_segment = AudioSegment.from_file(io.BytesIO(audio_bytes))
-                # dBFS is loudness in decibels relative to full scale. 0 is max, negative is quieter.
-                # Threshold for "suspiciously loud" depends on mic, but let's use -20 dBFS for a quiet room
-                if audio_segment.dBFS > -15.0:
+                
+                # Check chunks of 500ms
+                chunk_length_ms = 500
+                loud_chunks = 0
+                for i in range(0, len(audio_segment), chunk_length_ms):
+                    chunk = audio_segment[i:i + chunk_length_ms]
+                    if chunk.dBFS > -15.0:  # Threshold for talking/loud noise
+                        loud_chunks += 1
+                
+                # If we have at least 2 loud chunks (1 second total), flag it
+                if loud_chunks >= 2:
                     flags.append({"type": "audio_anomaly_detected", "confidence": 1.0})
             except Exception as e:
                 logger.error(f"Failed to process audio: {e}")
@@ -105,9 +113,74 @@ async def check_snapshot(
         return {
             "flagged": is_flagged,
             "flags": flags,
-            "message": f"Analyzed successfully. Found {person_count} person(s). dBFS check complete."
+            "message": f"Analyzed successfully. Found {person_count} person(s). Audio check complete."
         }
         
     except Exception as e:
         logger.error(f"Error checking snapshot: {str(e)}")
         raise HTTPException(status_code=500, detail=f"AI Service snapshot check failed: {str(e)}")
+
+class SummaryRequest(BaseModel):
+    student_id: int
+    student_name: str
+    total_flags: int
+    total_severity: int
+    flags: list
+
+@app.post("/summarize-student")
+def summarize_student(req: SummaryRequest):
+    if req.total_flags == 0:
+        summary = f"{req.student_name} completed the exam with no flagged incidents. Behavior appeared normal and compliant with exam rules."
+    elif req.total_severity < 10:
+        summary = f"{req.student_name} had a few minor incidents ({req.total_flags} flags, severity {req.total_severity}), mainly related to brief distractions or environmental noise. Overall, the integrity of the session is likely intact, but a quick review is recommended."
+    elif req.total_severity < 20:
+        summary = f"{req.student_name} exhibited suspicious behavior with {req.total_flags} flags (severity {req.total_severity}). Multiple policy violations were detected. Review the flag timeline to verify if unauthorized assistance was used."
+    else:
+        summary = f"High risk of academic dishonesty. {req.student_name} generated {req.total_flags} flags with a high severity score of {req.total_severity}. Frequent critical violations such as unauthorized devices, multiple people, or leaving the testing environment were detected. Manual intervention and strict review are required."
+    
+    return {"summary": summary}
+
+class ExamSummaryRequest(BaseModel):
+    exam_id: int
+    student_severities: list
+
+@app.post("/summarize-exam")
+def summarize_exam(req: ExamSummaryRequest):
+    total_students = len(req.student_severities)
+    flagged_students = [s for s in req.student_severities if s.get('total_severity', 0) > 0]
+    high_risk_students = [s for s in req.student_severities if s.get('total_severity', 0) >= 20]
+    
+    summary = f"Exam Integrity Overview: Out of {total_students} students, {len(flagged_students)} triggered at least one proctoring flag. "
+    if len(high_risk_students) > 0:
+        summary += f"There are {len(high_risk_students)} high-risk students requiring immediate review."
+    elif len(flagged_students) > 0:
+        summary += "Most flags were low to moderate severity. Please review the highlighted students in the dashboard."
+    else:
+        summary += "The exam session was smooth with no anomalies detected across any students."
+        
+    return {"summary": summary}
+
+class ReviewSessionRequest(BaseModel):
+    exam_id: str
+    student_id: str
+
+@app.post("/agent/review-session")
+def review_session(req: ReviewSessionRequest):
+    try:
+        from agents.proctoring_review import app_graph
+        result = app_graph.invoke({
+            "exam_id": req.exam_id,
+            "student_id": req.student_id,
+            "flags": [],
+            "incidents": [],
+            "evidence": [],
+            "summary": None
+        })
+        return result["summary"]
+    except Exception as e:
+        logger.error(f"LangGraph Agent failed: {e}")
+        return {
+            "incidents": [],
+            "overall_risk": "unknown",
+            "explanation": "Summary unavailable due to an internal AI error - please review the raw flags below."
+        }

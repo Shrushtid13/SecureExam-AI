@@ -1,11 +1,15 @@
-FROM python:3.9-slim
+FROM python:3.9-slim-bookworm
 
 WORKDIR /app
 
-# Install system dependencies if any are needed
-RUN apt-get update --fix-missing && apt-get install -y --no-install-recommends \
-    curl \
-    ffmpeg \
+# Install only curl, libgl1 for OpenCV, then get a static ffmpeg binary
+RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils libgl1 libglib2.0-0 \
+    && curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o /tmp/ffmpeg.tar.xz \
+    && tar -xf /tmp/ffmpeg.tar.xz -C /tmp \
+    && cp /tmp/ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ \
+    && cp /tmp/ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ \
+    && rm -rf /tmp/ffmpeg* \
+    && apt-get purge -y curl && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

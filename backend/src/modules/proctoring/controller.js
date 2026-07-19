@@ -109,8 +109,75 @@ async function processSnapshot(req, res) {
   }
 }
 
+async function generateSummary(req, res) {
+  try {
+    const { examId } = req.params;
+    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    
+    // First, get all students who have submitted the exam
+    const db = require('../../db');
+    const submissionsRes = await db.query(
+      `SELECT s.student_id, u.name as student_name
+       FROM submissions s
+       JOIN users u ON s.student_id = u.id
+       WHERE s.exam_id = $1 AND s.submitted_at IS NOT NULL`,
+      [examId]
+    );
+
+    const allSeverities = await proctoringModel.getAllStudentSeverities(examId);
+
+    // Call the AI service to generate per-student summaries
+    const studentSummaries = [];
+    for (const sub of submissionsRes.rows) {
+      const studentFlags = await proctoringModel.getStudentFlagSummary(examId, sub.student_id);
+      try {
+        const response = await axios.post(`${aiServiceUrl}/agent/review-session`, {
+          exam_id: String(examId),
+          student_id: String(sub.student_id)
+        });
+        const summary = response.data; // This is a structured JSON object from the agent
+        await db.query(`UPDATE submissions SET ai_summary = $1 WHERE exam_id = $2 AND student_id = $3`, [JSON.stringify(summary), examId, sub.student_id]);
+        studentSummaries.push({ student_id: sub.student_id, summary });
+      } catch (err) {
+        console.error(`Failed to summarize for student ${sub.student_id}:`, err.message);
+      }
+    }
+
+    // Call the AI service to generate exam-level summary
+    let examSummary = '';
+    try {
+      const response = await axios.post(`${aiServiceUrl}/summarize-exam`, {
+        exam_id: examId,
+        student_severities: allSeverities
+      });
+      examSummary = response.data.summary;
+      await db.query(`UPDATE exams SET exam_integrity_summary = $1 WHERE id = $2`, [examSummary, examId]);
+    } catch (err) {
+      console.error('Failed to summarize exam:', err.message);
+    }
+
+    res.json({ message: 'Summaries generated successfully', studentSummaries, examSummary });
+  } catch (error) {
+    console.error('generateSummary error:', error);
+    res.status(500).json({ error: 'Failed to generate summary' });
+  }
+}
+
+async function getSeverities(req, res) {
+  try {
+    const { examId } = req.params;
+    const severities = await proctoringModel.getAllStudentSeverities(examId);
+    res.json({ severities });
+  } catch (error) {
+    console.error('getSeverities error:', error);
+    res.status(500).json({ error: 'Failed to fetch severities' });
+  }
+}
+
 module.exports = {
   logFlag,
   getFlagsForExam,
   processSnapshot,
+  generateSummary,
+  getSeverities,
 };

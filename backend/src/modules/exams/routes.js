@@ -1,11 +1,13 @@
 const express = require('express');
 const examController = require('./controller');
 const { requireAuth, requireRole } = require('../../middleware/requireAuth');
+const validate = require('../../middleware/validate');
+const { createExamSchema } = require('../../validations');
 
 const router = express.Router();
 
 // Exams CRUD
-router.post('/', requireAuth, requireRole('teacher', 'admin'), examController.createExam);
+router.post('/', requireAuth, requireRole('teacher', 'admin'), validate(createExamSchema), examController.createExam);
 router.get('/', requireAuth, examController.listExams);
 router.get('/:id', requireAuth, examController.getExam);
 router.put('/:id', requireAuth, requireRole('teacher', 'admin'), examController.updateExam);

@@ -124,8 +124,75 @@ async function me(req, res) {
   }});
 }
 
+const crypto = require('crypto');
+
+async function forgotPassword(req, res) {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const user = await authModel.findUserByEmail(email.toLowerCase().trim());
+    if (!user) {
+      // Return 200 even if user not found to prevent email enumeration
+      return res.json({ message: 'If that email exists, a reset link has been sent.' });
+    }
+
+    // Generate token
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 3600000); // 1 hour from now
+
+    await authModel.setResetToken(user.email, token, expiresAt);
+
+    // Simulate sending email
+    const resetLink = `http://localhost:5173/reset-password/${token}`;
+    console.log('\n======================================================');
+    console.log(`[SIMULATED EMAIL TO: ${user.email}]`);
+    console.log(`Subject: Reset your SecureExam password`);
+    console.log(`Please click the following link to reset your password:`);
+    console.log(resetLink);
+    console.log('======================================================\n');
+
+    res.json({ message: 'If that email exists, a reset link has been sent.', simulatedLink: resetLink });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+async function resetPassword(req, res) {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Token and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+
+    const user = await authModel.findUserByResetToken(token);
+
+    if (!user || !user.reset_expires || new Date() > new Date(user.reset_expires)) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await authModel.updateUserPassword(user.id, passwordHash);
+
+    res.json({ message: 'Password has been reset successfully' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   register,
   login,
   me,
+  forgotPassword,
+  resetPassword,
 };

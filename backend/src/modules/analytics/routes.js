@@ -19,6 +19,14 @@ router.get(
   controller.getStudentResult
 );
 
+// PUT /api/analytics/exams/:examId/student/:studentId/score — update score (teacher/admin)
+router.put(
+  '/exams/:examId/student/:studentId/score',
+  requireAuth,
+  requireRole('teacher', 'admin'),
+  controller.updateStudentScore
+);
+
 // GET /api/analytics/exams/:examId/student/:studentId/integrity — integrity timeline
 router.get(
   '/exams/:examId/student/:studentId/integrity',

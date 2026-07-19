@@ -60,6 +60,13 @@ function initAiWorker(io, minioClient) {
 
         if (aiResult.flagged && aiResult.flags && aiResult.flags.length > 0) {
           for (const f of aiResult.flags) {
+            // Deduplication check: ignore if the exact same flag type was logged in the last 30s
+            const isDuplicate = await proctoringModel.recentFlagExists(examId, studentId, f.type, 30);
+            if (isDuplicate) {
+              console.log(`Skipping duplicate flag ${f.type} for student ${studentId}`);
+              continue;
+            }
+
             const flag = await proctoringModel.logFlag(
               examId,
               studentId,

@@ -72,6 +72,14 @@ chrome.tabs.onCreated.addListener((tab) => {
   }
 });
 
+// Detect navigation within the exam tab (URL change)
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url && activeExams[tabId]) {
+    // The exam tab navigated away from the exam page
+    postFlag(tabId, 'tab_navigated', `Exam tab navigated to: ${changeInfo.url}`);
+  }
+});
+
 // Also track window focus
 chrome.windows.onFocusChanged.addListener((windowId) => {
   if (windowId === chrome.windows.WINDOW_ID_NONE) {
