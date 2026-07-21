@@ -145,7 +145,7 @@ export default function SubmissionReview() {
                   </h3>
                   <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                     <span>Submitted: {new Date(result.submitted_at).toLocaleString()}</span>
-                    <span>Time taken: {Math.round(result.time_taken_seconds / 60)} mins</span>
+                    <span>Time taken: {result.time_taken_seconds != null ? `${Math.floor(result.time_taken_seconds / 60)}m ${result.time_taken_seconds % 60}s` : 'N/A'}</span>
                   </div>
                 </div>
                 

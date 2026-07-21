@@ -52,7 +52,7 @@ function ResultCard({ exam, user }) {
           <div>
             <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Time Taken</div>
             <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-h)' }}>
-              {Math.floor(result.time_taken_seconds / 60)}m {result.time_taken_seconds % 60}s
+              {result.time_taken_seconds != null ? `${Math.floor(result.time_taken_seconds / 60)}m ${result.time_taken_seconds % 60}s` : 'N/A'}
             </div>
           </div>
           <div style={{ gridColumn: '1 / -1', marginTop: '0.5rem' }}>
@@ -77,12 +77,10 @@ export default function StudentResults() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Fetch all exams the student is enrolled in
-    api.get('/exams')
+    // Fetch all submitted exams for the student
+    api.get('/analytics/student/me/results')
       .then(r => {
-        // Filter exams that have already ended
-        const ended = r.data.exams.filter(e => new Date(e.end_time) < new Date())
-        setExams(ended)
+        setExams(r.data.results || [])
       })
       .catch(console.error)
       .finally(() => setLoading(false))

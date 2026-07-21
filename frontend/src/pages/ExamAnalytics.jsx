@@ -123,7 +123,7 @@ function StudentAnalyticsModal({ examId, studentId, studentName, onClose }) {
                 </div>
                 <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
                   <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Time Taken</div>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-h)' }}>{resultData.time_taken_seconds ? `${Math.floor(resultData.time_taken_seconds / 60)}m ${resultData.time_taken_seconds % 60}s` : 'N/A'}</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-h)' }}>{resultData.time_taken_seconds != null ? `${Math.floor(resultData.time_taken_seconds / 60)}m ${resultData.time_taken_seconds % 60}s` : 'N/A'}</div>
                 </div>
               </div>
 
@@ -410,7 +410,13 @@ export default function ExamAnalytics() {
                       <tr><td colSpan="5" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No submissions yet.</td></tr>
                     ) : (
                       data.submissions.map(sub => {
-                        const timeSecs = Math.round((new Date(sub.submitted_at) - new Date(sub.started_at)) / 1000)
+                        let timeDisplay = 'N/A';
+                        if (sub.started_at && sub.submitted_at) {
+                          const timeSecs = Math.max(0, Math.round((new Date(sub.submitted_at) - new Date(sub.started_at)) / 1000));
+                          if (!isNaN(timeSecs)) {
+                            timeDisplay = `${Math.floor(timeSecs / 60)}m ${timeSecs % 60}s`;
+                          }
+                        }
                         return (
                           <tr key={sub.student_id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }} className="hover-bg">
                             <td style={{ padding: '1rem 2rem' }}>
@@ -424,7 +430,7 @@ export default function ExamAnalytics() {
                               </div>
                             </td>
                             <td style={{ padding: '1rem 2rem', fontSize: '0.9rem', color: 'var(--text-h)', fontWeight: 500 }}>
-                              {Math.floor(timeSecs / 60)}m {timeSecs % 60}s
+                              {timeDisplay}
                             </td>
                             <td style={{ padding: '1rem 2rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
                               {new Date(sub.submitted_at).toLocaleString()}

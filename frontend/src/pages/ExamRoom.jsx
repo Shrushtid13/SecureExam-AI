@@ -583,6 +583,7 @@ export default function ExamRoom() {
   const [questions, setQuestions] = useState([])
   const [answers, setAnswers] = useState({})
   const [currentIdx, setCurrentIdx] = useState(0)
+  const [studentStartTime, setStudentStartTime] = useState(Date.now())
   const [phase, setPhase] = useState('loading') // loading | preflight | exam | submitted
   const [savingStatus, setSavingStatus] = useState('saved') // saved | saving | error
   const [submitError, setSubmitError] = useState('')
@@ -615,6 +616,9 @@ export default function ExamRoom() {
             const serverAnswers = subRes.data.submission.answers
             setAnswers(serverAnswers)
             answersRef.current = serverAnswers
+          }
+          if (subRes.data?.submission?.started_at) {
+            setStudentStartTime(new Date(subRes.data.submission.started_at).getTime())
           }
           if (subRes.data?.submission?.submitted_at) {
             setPhase('submitted')
@@ -775,10 +779,16 @@ export default function ExamRoom() {
 
   // ── EXAM PHASE ──────────────────────────────────────────────────────────
   const currentQ = questions[currentIdx]
+  
+  // Calculate remaining time based on student's actual start time and duration
   const totalSeconds = exam.duration_minutes * 60
-  const startedAt = exam.start_time ? new Date(exam.start_time).getTime() : Date.now()
-  const elapsed = Math.floor((Date.now() - startedAt) / 1000)
-  const remaining = Math.max(0, totalSeconds - elapsed)
+  const elapsed = Math.floor((Date.now() - studentStartTime) / 1000)
+  let remaining = Math.max(0, totalSeconds - elapsed)
+
+  // Cap remaining time to the exam's hard end_time
+  const secondsUntilExamCloses = Math.floor((new Date(exam.end_time).getTime() - Date.now()) / 1000)
+  remaining = Math.min(remaining, Math.max(0, secondsUntilExamCloses))
+
   const answeredCount = Object.keys(answers).length
 
   return (

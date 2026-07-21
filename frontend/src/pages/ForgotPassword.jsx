@@ -5,16 +5,21 @@ import api from '../api'
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState({ type: '', message: '' })
+  const [previewUrl, setPreviewUrl] = useState(null)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
     setStatus({ type: '', message: '' })
+    setPreviewUrl(null)
     setLoading(true)
 
     try {
       const res = await api.post('/auth/forgot-password', { email })
       setStatus({ type: 'success', message: res.data.message })
+      if (res.data.previewUrl) {
+        setPreviewUrl(res.data.previewUrl)
+      }
       setEmail('')
     } catch (err) {
       setStatus({ type: 'error', message: err.response?.data?.error || 'Failed to request password reset' })
@@ -278,6 +283,13 @@ export default function ForgotPassword() {
                   border: `1px solid ${status.type === 'success' ? '#badbcc' : '#f5c2c7'}`
                 }}>
                   {status.message}
+                  {previewUrl && (
+                    <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed #badbcc' }}>
+                      <a href={previewUrl} target="_blank" rel="noreferrer" style={{ color: '#0f5132', fontWeight: 600, textDecoration: 'underline' }}>
+                        Click here to view the simulated email (Development only)
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
 

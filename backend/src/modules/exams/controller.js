@@ -1,6 +1,23 @@
 const examModel = require('./model');
 const authModel = require('../auth/model');
 
+// --- Helper: Seeded Random Shuffle ---
+function seededRandom(seed) {
+  let x = Math.sin(seed++) * 10000;
+  return x - Math.floor(x);
+}
+
+function shuffleArray(array, seed) {
+  let currentIndex = array.length, randomIndex;
+  let currentSeed = seed;
+  while (currentIndex !== 0) {
+    randomIndex = Math.floor(seededRandom(currentSeed++) * currentIndex);
+    currentIndex--;
+    [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+  }
+  return array;
+}
+
 // --- Helper: Verify Exam Ownership ---
 async function isExamOwner(examId, userId, role) {
   if (role === 'admin') return true;
@@ -93,10 +110,18 @@ async function getExam(req, res) {
         return res.status(403).json({ error: 'Exam window has closed' });
       }
 
-      // Strip correct answers
+      // Strip correct answers and shuffle options
+      let currentSeed = examId + req.user.id;
+      
       questions.forEach(q => {
         delete q.correct_answer;
+        if (q.type === 'mcq' && Array.isArray(q.options)) {
+          q.options = shuffleArray([...q.options], currentSeed++);
+        }
       });
+      
+      // Shuffle question order
+      shuffleArray(questions, currentSeed);
     }
 
     res.json({

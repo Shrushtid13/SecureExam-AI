@@ -29,6 +29,24 @@ async function autosave(req, res) {
     const enrollment = await examModel.getEnrollment(examId, req.user.id);
     if (!enrollment) return res.status(403).json({ error: 'Not enrolled in this exam' });
 
+    // Enforce time bounds
+    const exam = await examModel.getExamById(examId);
+    if (!exam) return res.status(404).json({ error: 'Exam not found' });
+    
+    const now = new Date();
+    const start = new Date(exam.start_time);
+    const end = new Date(exam.end_time);
+    
+    if (now < start) {
+      return res.status(403).json({ error: 'Exam has not started yet' });
+    }
+    
+    // Allow 5 minutes grace period for late submissions due to network latency
+    const endGrace = new Date(end.getTime() + 5 * 60000);
+    if (now > endGrace) {
+      return res.status(403).json({ error: 'Exam window has closed' });
+    }
+
     const submission = await gradingModel.saveAnswers(examId, req.user.id, answers);
     res.json({ message: 'Progress saved', submission });
   } catch (err) {
@@ -50,6 +68,24 @@ async function submit(req, res) {
     // Ensure student is enrolled
     const enrollment = await examModel.getEnrollment(examId, req.user.id);
     if (!enrollment) return res.status(403).json({ error: 'Not enrolled in this exam' });
+
+    // Enforce time bounds
+    const exam = await examModel.getExamById(examId);
+    if (!exam) return res.status(404).json({ error: 'Exam not found' });
+    
+    const now = new Date();
+    const start = new Date(exam.start_time);
+    const end = new Date(exam.end_time);
+    
+    if (now < start) {
+      return res.status(403).json({ error: 'Exam has not started yet' });
+    }
+    
+    // Allow 5 minutes grace period for late submissions
+    const endGrace = new Date(end.getTime() + 5 * 60000);
+    if (now > endGrace) {
+      return res.status(403).json({ error: 'Exam window has closed' });
+    }
 
     // Prevent double submission
     const existing = await gradingModel.getSubmission(examId, req.user.id);

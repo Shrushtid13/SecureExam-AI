@@ -207,9 +207,18 @@ async function updateStudentScore(examId, studentId, newScore) {
   return result.rows[0];
 }
 
+async function listSubmissionsForStudent(studentId) {
+  const result = await db.query(
+    'SELECT * FROM submissions WHERE student_id = $1',
+    [studentId]
+  );
+  return result.rows;
+}
+
 module.exports = {
   getStudentExamResult,
   getExamAnalytics,
   getStudentIntegrity,
   updateStudentScore,
+  listSubmissionsForStudent,
 };

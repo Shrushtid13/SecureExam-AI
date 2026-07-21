@@ -116,7 +116,7 @@ def group_into_incidents(flags: list[dict], window_seconds=90) -> list[dict]:
 # -----------------
 # 4. Graph Nodes
 # -----------------
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+
 
 class IncidentSummary(BaseModel):
     incidents: list[dict] = Field(description="A list of distinct incident clusters with descriptions.")
@@ -143,7 +143,7 @@ def evidence_node(state: ReviewState) -> ReviewState:
     return {**state, "evidence": evidence}
 
 def summarize_node(state: ReviewState) -> ReviewState:
-    # If no incidents, we can short-circuit or let LLM decide.
+    # If no incidents, short-circuit without calling LLM
     if not state["incidents"]:
         return {**state, "summary": {
             "incidents": [],
@@ -151,6 +151,17 @@ def summarize_node(state: ReviewState) -> ReviewState:
             "explanation": "No suspicious flags detected during the exam session."
         }}
 
+    # Read API key at call-time (not module import time) so Docker env vars are available.
+    # Support both GEMINI_API_KEY (our .env) and GOOGLE_API_KEY (LangChain default)
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        return {**state, "summary": {
+            "incidents": state["incidents"],
+            "overall_risk": "unknown",
+            "explanation": "AI summary unavailable: GEMINI_API_KEY is not set. Please add it to your .env file."
+        }}
+
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, google_api_key=api_key, request_timeout=30)
     structured_llm = llm.with_structured_output(IncidentSummary)
     prompt = (
         f"Review these proctoring incidents and evidence for one exam session.\n"
@@ -160,13 +171,13 @@ def summarize_node(state: ReviewState) -> ReviewState:
         f"and explain your reasoning briefly."
     )
     result = structured_llm.invoke(prompt)
-    
+
     # Extract dict safely depending on how structured output returns (Pydantic model vs dict)
     if isinstance(result, BaseModel):
         summary_dict = result.dict()
     else:
         summary_dict = result
-        
+
     return {**state, "summary": summary_dict}
 
 # -----------------
@@ -175,13 +186,13 @@ def summarize_node(state: ReviewState) -> ReviewState:
 graph = StateGraph(ReviewState)
 graph.add_node("fetch_flags", fetch_flags_node)
 graph.add_node("group", group_node)
-graph.add_node("evidence", evidence_node)
+graph.add_node("fetch_evidence", evidence_node)
 graph.add_node("summarize", summarize_node)
 
 graph.set_entry_point("fetch_flags")
 graph.add_edge("fetch_flags", "group")
-graph.add_edge("group", "evidence")
-graph.add_edge("evidence", "summarize")
+graph.add_edge("group", "fetch_evidence")
+graph.add_edge("fetch_evidence", "summarize")
 graph.add_edge("summarize", END)
 
 app_graph = graph.compile()

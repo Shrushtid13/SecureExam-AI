@@ -67,10 +67,51 @@ async function getStudentIntegrity(req, res) {
       analyticsModel.getStudentIntegrity(examId, studentId)
     );
 
-    res.json(result);
+    res.json({ flags, snapshotUrl, events: mergedTimeline, aiSummary });
   } catch (err) {
     console.error('getStudentIntegrity error:', err);
-    res.status(500).json({ error: 'Failed to get student integrity data' });
+    res.status(500).json({ error: 'Failed to fetch student integrity data' });
+  }
+}
+
+// GET /api/analytics/student/me/results
+async function getMyResults(req, res) {
+  try {
+    const studentId = req.user.id;
+    if (req.user.role !== 'student') {
+      return res.status(403).json({ error: 'Forbidden: Students only' });
+    }
+    
+    // 1. Get all submissions for the student that have been submitted
+    const submissions = await analyticsModel.listSubmissionsForStudent(studentId);
+    const completedSubmissions = submissions.filter(s => s.submitted_at);
+    
+    // 2. We need the exam details for each submission. Since listSubmissionsForStudent only returns submission data, 
+    // let's fetch exams for this student to get title and dates.
+    const examModel = require('../exams/model');
+    const exams = await examModel.listExamsForStudent(studentId);
+    
+    // 3. Map submissions to exams
+    const results = completedSubmissions.map(sub => {
+      const exam = exams.find(e => e.id === sub.exam_id);
+      return {
+        id: exam?.id, // using exam.id as the key for frontend routing consistency
+        exam_id: sub.exam_id,
+        title: exam ? exam.title : 'Unknown Exam',
+        start_time: exam ? exam.start_time : null,
+        end_time: exam ? exam.end_time : null,
+        score: sub.score,
+        // Since we want this to be lightweight, we'll let the frontend keep using the existing 
+        // per-exam result endpoint if it wants deeper details, OR we could fetch full result here.
+        // Actually, the current frontend fetches individual results per exam card. 
+        // We will just return the array of exams that have been submitted.
+      };
+    }).filter(e => e.title !== 'Unknown Exam');
+
+    res.json({ results });
+  } catch (err) {
+    console.error('getMyResults error:', err);
+    res.status(500).json({ error: 'Failed to fetch student results' });
   }
 }
 
@@ -114,6 +155,7 @@ module.exports = {
   getStudentResult,
   getExamAnalytics,
   getStudentIntegrity,
+  getMyResults,
   updateStudentScore,
   invalidateExamCaches,
 };

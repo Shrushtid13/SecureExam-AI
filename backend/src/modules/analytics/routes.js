@@ -4,6 +4,13 @@ const { requireAuth, requireRole } = require('../../middleware/requireAuth');
 
 const router = express.Router();
 
+// GET /api/analytics/student/me/results - get all submitted exams for student
+router.get(
+  '/student/me/results',
+  requireAuth,
+  controller.getMyResults
+);
+
 // GET /api/analytics/exams/:examId — per-exam analytics (teacher/admin only)
 router.get(
   '/exams/:examId',

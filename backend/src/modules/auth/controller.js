@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const authModel = require('./model');
+const { sendMail } = require('../../utils/mailer');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecuresecretkeyshouldbechanged';
 const BCRYPT_ROUNDS = 10;
@@ -145,16 +146,30 @@ async function forgotPassword(req, res) {
 
     await authModel.setResetToken(user.email, token, expiresAt);
 
-    // Simulate sending email
+    // Send email using mailer utility
     const resetLink = `http://localhost:5173/reset-password/${token}`;
-    console.log('\n======================================================');
-    console.log(`[SIMULATED EMAIL TO: ${user.email}]`);
-    console.log(`Subject: Reset your SecureExam password`);
-    console.log(`Please click the following link to reset your password:`);
-    console.log(resetLink);
-    console.log('======================================================\n');
+    
+    const mailResult = await sendMail({
+      to: user.email,
+      subject: 'Reset your SecureExam AI password',
+      text: `Please click the following link to reset your password:\n\n${resetLink}\n\nThis link will expire in 1 hour.`,
+      html: `
+        <div style="font-family: sans-serif; line-height: 1.5; color: #333;">
+          <h2>Password Reset Request</h2>
+          <p>We received a request to reset your password for your SecureExam AI account.</p>
+          <p>Please click the button below to choose a new password:</p>
+          <a href="${resetLink}" style="display: inline-block; padding: 10px 20px; color: #fff; background-color: #0dcaf0; text-decoration: none; border-radius: 5px;">Reset Password</a>
+          <p>Or copy and paste this link into your browser:</p>
+          <p><a href="${resetLink}">${resetLink}</a></p>
+          <p>This link will expire in 1 hour. If you did not request a password reset, please ignore this email.</p>
+        </div>
+      `
+    });
 
-    res.json({ message: 'If that email exists, a reset link has been sent.', simulatedLink: resetLink });
+    res.json({ 
+      message: 'If that email exists, a reset link has been sent.',
+      previewUrl: mailResult?.previewUrl || null
+    });
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(500).json({ error: 'Internal server error' });
